@@ -4,8 +4,14 @@
   "description": "Safe autonomous mode for AI coding agents — sandboxed Docker containers with audit trails",
   "type": "module",
   "bin": {
-    "ithilien": "./dist/cli.js"
+    "ithilien": "dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "templates/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",

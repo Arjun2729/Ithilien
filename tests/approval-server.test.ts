@@ -1,12 +1,36 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import type { AddressInfo } from 'node:net';
+import { createServer } from 'node:net';
 import { createApprovalServer, generateToken } from '../src/approval/server.js';
 
-describe('approval server', () => {
-  let srv: ReturnType<typeof createApprovalServer>;
-  const port = 13457;
+async function canBindLocalhost(): Promise<boolean> {
+  return await new Promise((resolve) => {
+    const s = createServer();
+    s.once('error', () => resolve(false));
+    s.listen(0, '127.0.0.1', () => s.close(() => resolve(true)));
+  });
+}
+
+const canListen = await canBindLocalhost();
+const suite = canListen ? describe : describe.skip;
+
+suite('approval server', () => {
+  let srv: ReturnType<typeof createApprovalServer> | undefined;
+
+  async function startServer(options: { authToken: string; timeout: number }) {
+    srv = createApprovalServer({ port: 0, ...options });
+    await srv.start();
+    const addr = srv.server.address();
+    if (!addr || typeof addr === 'string') {
+      throw new Error('Expected approval server to be bound to a TCP port');
+    }
+    const port = (addr as AddressInfo).port;
+    return `http://127.0.0.1:${port}`;
+  }
 
   afterEach(async () => {
     if (srv) await srv.stop().catch(() => {});
+    srv = undefined;
   });
 
   it('generates unique auth tokens', () => {
@@ -17,20 +41,18 @@ describe('approval server', () => {
   });
 
   it('starts and responds to health check', async () => {
-    srv = createApprovalServer({ port, authToken: 'test', timeout: 5 });
-    await srv.start();
+    const baseUrl = await startServer({ authToken: 'test', timeout: 5 });
 
-    const res = await fetch(`http://localhost:${port}/health`);
+    const res = await fetch(`${baseUrl}/health`);
     const data = await res.json();
     expect(data.ok).toBe(true);
   });
 
   it('requires token for claude-approval endpoint', async () => {
-    srv = createApprovalServer({ port, authToken: 'secret123', timeout: 1 });
-    await srv.start();
+    const baseUrl = await startServer({ authToken: 'secret123', timeout: 1 });
 
     // Without token — should be rejected
-    const noTokenRes = await fetch(`http://localhost:${port}/api/claude-approval`, {
+    const noTokenRes = await fetch(`${baseUrl}/api/claude-approval`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '/tmp/x' } }),
@@ -38,7 +60,7 @@ describe('approval server', () => {
     expect(noTokenRes.status).toBe(401);
 
     // With token — should work (will timeout after 1s but 200 response)
-    const withTokenRes = await fetch(`http://localhost:${port}/api/claude-approval?token=secret123`, {
+    const withTokenRes = await fetch(`${baseUrl}/api/claude-approval?token=secret123`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '/tmp/x' } }),
@@ -47,34 +69,32 @@ describe('approval server', () => {
   });
 
   it('requires token for all endpoints except health', async () => {
-    srv = createApprovalServer({ port, authToken: 'secret123', timeout: 5 });
-    await srv.start();
+    const baseUrl = await startServer({ authToken: 'secret123', timeout: 5 });
 
     // /api/requests without token — 401
-    const noTokenRes = await fetch(`http://localhost:${port}/api/requests`);
+    const noTokenRes = await fetch(`${baseUrl}/api/requests`);
     expect(noTokenRes.status).toBe(401);
 
     // With token — works
-    const resWithToken = await fetch(`http://localhost:${port}/api/requests?token=secret123`);
+    const resWithToken = await fetch(`${baseUrl}/api/requests?token=secret123`);
     expect(resWithToken.ok).toBe(true);
 
     // Web UI without token — 401
-    const uiNoToken = await fetch(`http://localhost:${port}/`);
+    const uiNoToken = await fetch(`${baseUrl}/`);
     expect(uiNoToken.status).toBe(401);
 
     // Web UI with token — works
-    const uiWithToken = await fetch(`http://localhost:${port}/?token=secret123`);
+    const uiWithToken = await fetch(`${baseUrl}/?token=secret123`);
     expect(uiWithToken.ok).toBe(true);
     const html = await uiWithToken.text();
     expect(html).toContain('Ithilien');
   });
 
   it('handles claude approval flow end-to-end', async () => {
-    srv = createApprovalServer({ port, authToken: 'test', timeout: 10 });
-    await srv.start();
+    const baseUrl = await startServer({ authToken: 'test', timeout: 10 });
 
     // Submit a Claude hook request with token (non-blocking via Promise.all)
-    const hookRequest = fetch(`http://localhost:${port}/api/claude-approval?token=test`, {
+    const hookRequest = fetch(`${baseUrl}/api/claude-approval?token=test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -88,7 +108,7 @@ describe('approval server', () => {
     await new Promise((r) => setTimeout(r, 200));
 
     // Get pending requests (with token)
-    const pendingRes = await fetch(`http://localhost:${port}/api/requests?token=test`);
+    const pendingRes = await fetch(`${baseUrl}/api/requests?token=test`);
     const pending = await pendingRes.json();
     expect(pending).toHaveLength(1);
     expect(pending[0].tool).toBe('Bash');
@@ -97,7 +117,7 @@ describe('approval server', () => {
 
     // Approve the request (with token)
     const respondRes = await fetch(
-      `http://localhost:${port}/api/respond/${pending[0].id}?token=test`,
+      `${baseUrl}/api/respond/${pending[0].id}?token=test`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,12 +134,16 @@ describe('approval server', () => {
   });
 
   it('auto-denies on timeout', async () => {
-    const timeoutPort = 13459;
-    const timeoutSrv = createApprovalServer({ port: timeoutPort, authToken: 'test', timeout: 1 });
+    const timeoutSrv = createApprovalServer({ port: 0, authToken: 'test', timeout: 1 });
     await timeoutSrv.start();
+    const addr = timeoutSrv.server.address();
+    if (!addr || typeof addr === 'string') {
+      throw new Error('Expected approval server to be bound to a TCP port');
+    }
+    const timeoutPort = (addr as AddressInfo).port;
 
     try {
-      const hookRes = await fetch(`http://localhost:${timeoutPort}/api/claude-approval?token=test`, {
+      const hookRes = await fetch(`http://127.0.0.1:${timeoutPort}/api/claude-approval?token=test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,11 +161,10 @@ describe('approval server', () => {
   });
 
   it('rejects duplicate responses', async () => {
-    srv = createApprovalServer({ port, authToken: 'test', timeout: 10 });
-    await srv.start();
+    const baseUrl = await startServer({ authToken: 'test', timeout: 10 });
 
     // Submit request with token
-    const hookRequest = fetch(`http://localhost:${port}/api/claude-approval?token=test`, {
+    const hookRequest = fetch(`${baseUrl}/api/claude-approval?token=test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls' } }),
@@ -149,12 +172,12 @@ describe('approval server', () => {
 
     await new Promise((r) => setTimeout(r, 200));
 
-    const pendingRes = await fetch(`http://localhost:${port}/api/requests?token=test`);
+    const pendingRes = await fetch(`${baseUrl}/api/requests?token=test`);
     const pending = await pendingRes.json();
     const id = pending[0].id;
 
     // First response succeeds
-    const first = await fetch(`http://localhost:${port}/api/respond/${id}?token=test`, {
+    const first = await fetch(`${baseUrl}/api/respond/${id}?token=test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ decision: 'approved' }),
@@ -162,7 +185,7 @@ describe('approval server', () => {
     expect(first.ok).toBe(true);
 
     // Second response fails with 409
-    const second = await fetch(`http://localhost:${port}/api/respond/${id}?token=test`, {
+    const second = await fetch(`${baseUrl}/api/respond/${id}?token=test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ decision: 'denied' }),

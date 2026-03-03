@@ -15,6 +15,7 @@ program
 program
   .command('approve-server')
   .description('Start the remote approval server for phone-based tool approvals')
+  .option('--host <host>', 'Bind host (use 0.0.0.0 for LAN access)', '127.0.0.1')
   .option('-p, --port <port>', 'Server port', '3456')
   .option('-t, --timeout <seconds>', 'Seconds before auto-deny on no response', '300')
   .option('--no-tunnel', 'Skip opening a tunnel (local-only mode)')
@@ -26,6 +27,7 @@ program
 
     const port = parseInt(opts.port, 10);
     const timeout = parseInt(opts.timeout, 10);
+    const host = String(opts.host ?? '127.0.0.1');
     const authToken = generateToken();
 
     console.log('');
@@ -34,7 +36,7 @@ program
     console.log('');
 
     // Start server
-    const srv = createApprovalServer({ port, authToken, timeout });
+    const srv = createApprovalServer({ host, port, authToken, timeout });
     try {
       await srv.start();
     } catch (err: unknown) {
@@ -52,10 +54,11 @@ program
       }
       throw err;
     }
-    console.log(chalk.green('  ✓') + chalk.white(` Server running on port ${port}`));
+    console.log(chalk.green('  ✓') + chalk.white(` Server running on ${host}:${port}`));
 
     // Open tunnel
-    let approvalUrl = `http://localhost:${port}/?token=${authToken}`;
+    const urlHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+    let approvalUrl = `http://${urlHost}:${port}/?token=${authToken}`;
     let tunnelUrl: string | null = null;
 
     if (opts.tunnelUrl) {

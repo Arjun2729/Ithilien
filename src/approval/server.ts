@@ -75,12 +75,13 @@ function describeToolCall(toolName: string, toolInput: Record<string, unknown>):
 
 export interface ApprovalServerOptions {
   port: number;
+  host?: string;
   authToken: string;
   timeout: number;
 }
 
 export function createApprovalServer(options: ApprovalServerOptions) {
-  const { port, authToken, timeout } = options;
+  const { port, host, authToken, timeout } = options;
 
   // Per-instance state
   const requests = new Map<string, ApprovalRequest>();
@@ -311,10 +312,17 @@ export function createApprovalServer(options: ApprovalServerOptions) {
     start(): Promise<void> {
       return new Promise((resolve, reject) => {
         server.once('error', reject);
-        server.listen(port, () => {
+        const onListening = () => {
           server.removeListener('error', reject);
           resolve();
-        });
+        };
+        if (host) {
+          server.listen(port, host, onListening);
+        } else {
+          // If host is omitted, Node will typically bind to a dual-stack address (e.g. ::)
+          // which avoids localhost IPv4/IPv6 resolution flakiness in some environments.
+          server.listen(port, onListening);
+        }
       });
     },
     stop(): Promise<void> {
