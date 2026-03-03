@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.ithilien-bundle
+.DS_Store

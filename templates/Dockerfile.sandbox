@@ -1,0 +1,35 @@
+FROM node:20-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    wget \
+    jq \
+    python3 \
+    python3-pip \
+    build-essential \
+    ca-certificates \
+    openssh-client \
+    iptables \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install common global tools
+# Yarn is already present in the Node 20 image; installing it again can fail with EEXIST.
+RUN npm install -g pnpm typescript tsx @anthropic-ai/claude-code
+
+WORKDIR /workspace
+
+# Default shell
+SHELL ["/bin/bash", "-c"]
+
+# Non-root user for safety
+RUN groupadd -r sandbox && useradd -r -g sandbox -m sandbox
+# sandbox user needs write access to /workspace
+RUN chown sandbox:sandbox /workspace
+
+LABEL org.opencontainers.image.title="ithilien-sandbox"
+LABEL org.opencontainers.image.description="Sandboxed environment for AI coding agents"
+
+USER sandbox
+
+CMD ["/bin/bash"]
