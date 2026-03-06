@@ -1,62 +1,58 @@
-# Ithilien Demo — Safe autonomous mode for AI coding agents
+# Ithilien Demo
 Output demo.gif
 
 Set Shell "bash"
 Set FontSize 20
 Set Width 1200
-Set Height 600
+Set Height 650
 Set Padding 16
 Set Margin 20
 Set MarginFill "#1B4332"
 Set BorderRadius 8
 Set WindowBar Colorful
-Set TypingSpeed 40ms
-Set PlaybackSpeed 1
-Set Theme "Catppuccin Mocha"
-Set LoopOffset 60%
+Set TypingSpeed 35ms
+Set PlaybackSpeed 0.6
+Set LoopOffset 70%
 
+# --- Hidden setup ---
 Hide
 Type "cd /tmp/ithilien-demo && clear"
 Enter
 Sleep 500ms
 Show
 
-# Context
-Type "# An AI agent just ran autonomously inside a Docker sandbox."
-Enter
-Type "# Let's review what it did."
-Enter
-Sleep 2s
+# ═══════════════════════════════════════════
+# ACT 1: Inspect what the agent did
+# ═══════════════════════════════════════════
 
-# Session log
-Type "ithilien log"
+# Show the audit trail
+Type "ithilien show YE5E06BNAIQA"
 Enter
-Sleep 3s
+Sleep 7s
 
-# Audit trail
-Type "ithilien show Sqkn9Mi-Z1xx"
+# Show the diffs — THE MONEY SHOT
+Type "ithilien diff YE5E06BNAIQA"
 Enter
-Sleep 4s
+Sleep 9s
 
-# File diffs
-Type "ithilien diff Sqkn9Mi-Z1xx"
+# ═══════════════════════════════════════════
+# ACT 2: Verify integrity
+# ═══════════════════════════════════════════
+Type "ithilien verify YE5E06BNAIQA"
 Enter
-Sleep 5s
+Sleep 6s
 
-# Integrity verification
-Type "ithilien verify Sqkn9Mi-Z1xx"
-Enter
-Sleep 3s
-
-# Apply
-Type "ithilien apply Sqkn9Mi-Z1xx"
+# ═══════════════════════════════════════════
+# ACT 3: Apply the changes
+# ═══════════════════════════════════════════
+Type "ithilien apply YE5E06BNAIQA"
 Enter
 Sleep 2s
 Type "y"
 Enter
-Sleep 3s
+Sleep 5s
 
-# Tag
-Type "# github.com/Arjun2729/Ithilien"
-Enter
+# ═══════════════════════════════════════════
+# END
+# ═══════════════════════════════════════════
 Sleep 3s
