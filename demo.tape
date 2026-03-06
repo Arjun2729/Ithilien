@@ -11,7 +11,7 @@ Set MarginFill "#1B4332"
 Set BorderRadius 8
 Set WindowBar Colorful
 Set TypingSpeed 40ms
-Set PlaybackSpeed 1.5
+Set PlaybackSpeed 1
 Set Theme "Catppuccin Mocha"
 Set LoopOffset 60%
 
@@ -50,6 +50,9 @@ Sleep 3s
 
 # Apply
 Type "ithilien apply CiUV3kcL3ys4"
+Enter
+Sleep 2s
+Type "y"
 Enter
 Sleep 3s
 
