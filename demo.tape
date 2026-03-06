@@ -34,22 +34,22 @@ Enter
 Sleep 3s
 
 # Audit trail
-Type "ithilien show CiUV3kcL3ys4"
+Type "ithilien show Sqkn9Mi-Z1xx"
 Enter
 Sleep 4s
 
 # File diffs
-Type "ithilien diff CiUV3kcL3ys4"
+Type "ithilien diff Sqkn9Mi-Z1xx"
 Enter
 Sleep 5s
 
 # Integrity verification
-Type "ithilien verify CiUV3kcL3ys4"
+Type "ithilien verify Sqkn9Mi-Z1xx"
 Enter
 Sleep 3s
 
 # Apply
-Type "ithilien apply CiUV3kcL3ys4"
+Type "ithilien apply Sqkn9Mi-Z1xx"
 Enter
 Sleep 2s
 Type "y"

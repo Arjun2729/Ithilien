@@ -1,7 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { buildNetworkConfig } from '../src/sandbox/network.js';
 import { getProfile } from '../src/config/profiles.js';
 import type { GuardrailProfile } from '../src/types.js';
+
+vi.mock('node:dns/promises', () => {
+  return {
+    resolve: vi.fn(async (domain: string) => {
+      switch (domain) {
+        case 'dns.google':
+          return ['8.8.8.8', '8.8.4.4'];
+        case 'example.com':
+          return ['93.184.216.34'];
+        default:
+          throw new Error('ENOTFOUND');
+      }
+    }),
+  };
+});
 
 // Mock Docker instance (buildNetworkConfig only uses it for type, not calls)
 const mockDocker = {} as any;

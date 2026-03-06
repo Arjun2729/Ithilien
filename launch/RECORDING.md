@@ -5,6 +5,7 @@
 - Docker must be running
 - Ithilien must be installed globally: `npm install -g .`
 - An agent must be available inside Docker (the demo uses Claude Code; needs `ANTHROPIC_API_KEY` set)
+- If demoing Gemini, set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) on the host so Ithilien can forward it into the container
 
 ## Record
 

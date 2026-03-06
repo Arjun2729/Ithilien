@@ -9,6 +9,7 @@ describe('resolveProfile', () => {
     const profile = await resolveProfile('default');
     expect(profile.name).toBe('default');
     expect(profile.network.mode).toBe('allowlist');
+    expect(profile.network.allowlist).toContain('generativelanguage.googleapis.com');
   });
 
   it('resolves strict profile', async () => {

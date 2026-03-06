@@ -186,10 +186,19 @@ export async function runInContainer(opts: ContainerOptions): Promise<ContainerR
       ...envVars,
     ];
 
-    // Auto-forward API key for AI agents (the primary use case for ithilien)
-    if (process.env.ANTHROPIC_API_KEY && !envVars.some(v => v.startsWith('ANTHROPIC_API_KEY='))) {
-      env.push(`ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`);
-    }
+    // Auto-forward common API keys for agent CLIs (opt-in via host env).
+    // This is a convenience so demos don't require repeating `--env KEY=...`.
+    const autoForward = (key: string) => {
+      const value = process.env[key];
+      if (!value) return;
+      if (envVars.some(v => v.startsWith(`${key}=`))) return;
+      env.push(`${key}=${value}`);
+    };
+
+    autoForward('ANTHROPIC_API_KEY');
+    autoForward('OPENAI_API_KEY');
+    autoForward('GEMINI_API_KEY');
+    autoForward('GOOGLE_API_KEY');
 
     // For allowlist mode, pass resolved IPs so iptables can enforce at IP level
     if (profile.network.mode === 'allowlist' && networkConfig.extraHosts.length > 0) {

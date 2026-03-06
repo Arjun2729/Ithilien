@@ -15,6 +15,8 @@ export const DEFAULT_PROFILE: GuardrailProfile = {
       'github.com', 'api.github.com',
       'cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'unpkg.com',
       'dl.google.com', 'storage.googleapis.com',
+      // Google APIs (Gemini / OAuth)
+      'generativelanguage.googleapis.com', 'oauth2.googleapis.com', 'accounts.google.com',
       'api.anthropic.com', 'api.openai.com',
     ],
   },

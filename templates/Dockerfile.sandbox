@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install common global tools
 # Yarn is already present in the Node 20 image; installing it again can fail with EEXIST.
-RUN npm install -g pnpm typescript tsx @anthropic-ai/claude-code
+RUN npm install -g pnpm typescript tsx @anthropic-ai/claude-code @google/gemini-cli
 
 WORKDIR /workspace
 

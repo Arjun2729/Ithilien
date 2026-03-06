@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import type { GuardrailProfile } from '../types.js';
 
 /**
@@ -22,6 +23,18 @@ export function buildMountConfig(profile: GuardrailProfile, workspaceVolume: str
 
   // Note: blockedPaths are simply never mounted, so they're
   // completely invisible inside the container. No action needed.
+
+  // Auto-mount agent auth directories (read-write so tokens can refresh)
+  const home = homedir();
+  const agentAuthDirs = [
+    { host: join(home, '.gemini'), container: '/home/sandbox/.gemini' },
+    { host: join(home, '.config', 'gemini'), container: '/home/sandbox/.config/gemini' },
+  ];
+  for (const { host, container } of agentAuthDirs) {
+    if (existsSync(host)) {
+      mounts.push(`${host}:${container}`);
+    }
+  }
 
   return mounts;
 }
