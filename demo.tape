@@ -28,26 +28,26 @@ Show
 # Show the audit trail
 Type "ithilien show YE5E06BNAIQA"
 Enter
-Sleep 3.5s
+Sleep 5s
 
 # Show the diffs — THE MONEY SHOT
 Type "ithilien diff YE5E06BNAIQA"
 Enter
-Sleep 3.5s
+Sleep 5s
 
 # ═══════════════════════════════════════════
 # ACT 2: Verify integrity
 # ═══════════════════════════════════════════
 Type "ithilien verify YE5E06BNAIQA"
 Enter
-Sleep 3.5s
+Sleep 5s
 
 # ═══════════════════════════════════════════
 # ACT 3: Apply the changes
 # ═══════════════════════════════════════════
 Type "ithilien apply YE5E06BNAIQA"
 Enter
-Sleep 2s
+Sleep 4s
 Type "y"
 Enter
 Sleep 3.5s
