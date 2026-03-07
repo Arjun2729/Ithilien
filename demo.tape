@@ -11,7 +11,7 @@ Set MarginFill "#1B4332"
 Set BorderRadius 8
 Set WindowBar Colorful
 Set TypingSpeed 35ms
-Set PlaybackSpeed 0.6
+Set PlaybackSpeed 1
 Set LoopOffset 70%
 
 # --- Hidden setup ---
@@ -28,26 +28,26 @@ Show
 # Show the audit trail
 Type "ithilien show YE5E06BNAIQA"
 Enter
-Sleep 7s
+Sleep 1.4s
 
 # Show the diffs — THE MONEY SHOT
 Type "ithilien diff YE5E06BNAIQA"
 Enter
-Sleep 9s
+Sleep 2.2s
 
 # ═══════════════════════════════════════════
 # ACT 2: Verify integrity
 # ═══════════════════════════════════════════
 Type "ithilien verify YE5E06BNAIQA"
 Enter
-Sleep 6s
+Sleep 1.4s
 
 # ═══════════════════════════════════════════
 # ACT 3: Apply the changes
 # ═══════════════════════════════════════════
 Type "ithilien apply YE5E06BNAIQA"
 Enter
-Sleep 2s
+Sleep 900ms
 Type "y"
 Enter
-Sleep 2s
+Sleep 1.2s
