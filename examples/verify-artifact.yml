@@ -1,0 +1,62 @@
+# Verify an Ithilien bundle uploaded as a GitHub Actions artifact
+#
+# Use this as a reusable workflow when the bundle is produced by a separate
+# CI job (e.g., an agent job that creates the bundle, then a verification
+# job that checks it).
+#
+# Example caller:
+#
+#   jobs:
+#     agent:
+#       runs-on: ubuntu-latest
+#       steps:
+#         - run: ithilien run "claude -p 'fix tests'"
+#         - run: ithilien export <session-id>
+#         - uses: actions/upload-artifact@v4
+#           with:
+#             name: ithilien-bundle
+#             path: '*.ithilien-bundle'
+#
+#     verify:
+#       needs: agent
+#       uses: ./.github/workflows/verify-artifact.yml
+#       with:
+#         artifact_name: ithilien-bundle
+#         bundle_filename: session-<id>.ithilien-bundle
+
+name: Verify Ithilien Artifact
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: 'Name of the artifact containing the .ithilien-bundle'
+        required: true
+        type: string
+      bundle_filename:
+        description: 'Filename of the .ithilien-bundle inside the artifact'
+        required: true
+        type: string
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Ithilien
+        run: npm install -g ithilien
+
+      - name: Download bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+
+      - name: Verify bundle integrity
+        run: ithilien inspect "${{ inputs.bundle_filename }}" --format json
+
+      - name: Generate job summary
+        if: always()
+        run: ithilien inspect "${{ inputs.bundle_filename }}" --format summary >> "$GITHUB_STEP_SUMMARY"

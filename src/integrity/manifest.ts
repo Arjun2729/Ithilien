@@ -1,13 +1,16 @@
-import type { Session, SessionManifest, EnvironmentFingerprint } from '../types.js';
+import type { Session, SessionManifest, EnvironmentFingerprint, PolicyContext } from '../types.js';
 import { buildHashChain, computeRootHash } from './hasher.js';
 
 /**
  * Generate a session manifest with hash chain and root hash.
  * Call this after a session completes and all events are finalized.
+ *
+ * The optional policyContext records which policy governed the session.
  */
 export function generateManifest(
   session: Session,
   fingerprint: EnvironmentFingerprint,
+  policyContext?: PolicyContext,
 ): SessionManifest {
   const eventHashes = buildHashChain(session.events);
   const rootHash = computeRootHash(eventHashes);
@@ -22,5 +25,6 @@ export function generateManifest(
       session.events[session.events.length - 1]?.timestamp || session.startedAt,
     fingerprint,
     eventHashes,
+    ...(policyContext ? { policyContext } : {}),
   };
 }

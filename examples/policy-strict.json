@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "description": "Strict policy — deny dangerous operations, ask for medium-risk, allow only safe commands",
+  "defaultAction": "ask",
+  "defaultRisk": "medium",
+  "commands": [
+    {
+      "name": "allow-ls",
+      "pattern": "\\bls\\b",
+      "action": "allow",
+      "risk": "low",
+      "category": "filesystem",
+      "description": "Directory listing"
+    },
+    {
+      "name": "allow-cat",
+      "pattern": "\\bcat\\b",
+      "action": "allow",
+      "risk": "low",
+      "category": "filesystem",
+      "description": "File read"
+    },
+    {
+      "name": "allow-grep",
+      "pattern": "\\bgrep\\b",
+      "action": "allow",
+      "risk": "low",
+      "category": "filesystem",
+      "description": "Pattern search"
+    },
+    {
+      "name": "allow-echo",
+      "pattern": "\\becho\\b",
+      "action": "allow",
+      "risk": "low",
+      "category": "shell",
+      "description": "Print to stdout"
+    },
+    {
+      "name": "allow-git-status",
+      "pattern": "\\bgit\\s+(status|log|diff|show|branch)\\b",
+      "action": "allow",
+      "risk": "low",
+      "category": "git",
+      "description": "Read-only git operations"
+    },
+    {
+      "name": "deny-network",
+      "pattern": "\\b(curl|wget|nc|netcat|ssh|scp|rsync)\\b",
+      "action": "deny",
+      "risk": "high",
+      "category": "network",
+      "description": "All network tools blocked in strict mode"
+    },
+    {
+      "name": "deny-package-managers",
+      "pattern": "\\b(npm|pnpm|yarn|pip|pip3|gem|cargo)\\s+(install|add|publish)\\b",
+      "action": "deny",
+      "risk": "high",
+      "category": "package",
+      "description": "Package installation blocked in strict mode"
+    }
+  ]
+}

@@ -15,13 +15,21 @@ import { renderTerminalSummary } from '../audit/report.js';
 import { captureFingerprint } from '../integrity/fingerprint.js';
 import { generateManifest } from '../integrity/manifest.js';
 import { hasSigningKey, signRootHash } from '../integrity/signer.js';
+import { loadPolicy } from '../policy/loader.js';
+import { evaluateCommand } from '../policy/evaluator.js';
+import { enforceDecision, formatDecisionMessage } from '../policy/enforcer.js';
+import { buildPolicyContext } from '../policy/hash.js';
+import { EXIT_INVALID_INPUT } from '../exit-codes.js';
+import type { PolicyDecision } from '../policy/types.js';
 
 export interface RunOptions {
   profile: string;
+  policy?: string;
   timeout?: string;
   sandbox: boolean;
   verbose: boolean;
   env: string[];
+  agent?: string;
 }
 
 export async function runCommand(command: string, opts: RunOptions): Promise<void> {
@@ -40,16 +48,133 @@ export async function runCommand(command: string, opts: RunOptions): Promise<voi
     profile.resources.maxDuration = parsed;
   }
 
+  // --- Agent wrapper resolution ---
+  let prompt: string | undefined;
+  if (opts.agent) {
+    const { getAgent, getAgentNames } = await import('../agents/registry.js');
+    const wrapper = getAgent(opts.agent);
+    if (!wrapper) {
+      const available = getAgentNames().join(', ');
+      console.error(chalk.red(`  Unknown agent: "${opts.agent}"`));
+      console.error(chalk.dim(`  Available agents: ${available}`));
+      process.exit(EXIT_INVALID_INPUT);
+    }
+
+    // Warn about missing env vars (advisory, not blocking)
+    for (const envVar of wrapper.requiredEnvVars) {
+      if (!process.env[envVar]) {
+        console.error(chalk.yellow(`  \u26a0  ${wrapper.displayName} typically requires ${envVar} to be set`));
+      }
+    }
+
+    prompt = command;
+    command = wrapper.buildCommand(command);
+
+    if (opts.verbose) {
+      console.log(chalk.dim(`  Agent: ${wrapper.displayName}`));
+      console.log(chalk.dim(`  Expanded: ${command}`));
+    }
+  }
+
+  // --- Load and evaluate policy ---
+  const { policy, warnings: policyWarnings } = await loadPolicy({
+    projectPath,
+    policyPath: opts.policy,
+  });
+
+  // Print policy warnings (unsupported rule types, etc.)
+  for (const w of policyWarnings) {
+    console.error(chalk.yellow(`  ⚠  ${w.message}`));
+  }
+
+  const decision = evaluateCommand(command, policy);
+
+  // Create session and logger early so denial is recorded in the audit trail
+  const session = createSession(command, profile.name, projectPath);
+  if (prompt !== undefined) {
+    session.prompt = prompt;
+    session.agent = opts.agent;
+  }
+  const logger = new AuditLogger();
+
+  // Emit policy decision event for every evaluated command
+  logger.policyDecision(
+    command,
+    decision.action,
+    decision.risk,
+    decision.category,
+    decision.matchedRule,
+    decision.source,
+    decision.reason,
+  );
+
+  // Enforce the decision
+  const enforcement = await enforceDecision(decision);
+
+  if (!enforcement.proceed) {
+    // Command was denied or ask was rejected — record and exit
+    logger.commandStart(command);
+    logger.guardrailTriggered(
+      decision.matchedRule ?? 'policy',
+      'deny',
+      formatDenialDetail(decision, enforcement.resolution),
+    );
+    logger.commandEnd(1);
+
+    session.status = 'denied';
+    session.exitCode = 1;
+    session.completedAt = new Date().toISOString();
+    session.events = logger.getEvents();
+    session.summary = computeSummary(session);
+
+    // Integrity: still generate manifest for denied sessions
+    const fingerprint = captureFingerprint('none', 'none', command, profile);
+    const policyCtx = buildPolicyContext(policy, {
+      policyPath: opts.policy,
+      engineVersion: fingerprint.ithilienVersion,
+    });
+    const manifest = generateManifest(session, fingerprint, policyCtx);
+    if (hasSigningKey()) {
+      const { signature, publicKey } = signRootHash(manifest.rootHash);
+      manifest.signature = signature;
+      manifest.publicKey = publicKey;
+    }
+    session.manifest = manifest;
+
+    await saveSession(session);
+
+    // User-facing output
+    console.log('');
+    if (decision.action === 'deny') {
+      console.log(chalk.red('  ✗ Command blocked by policy'));
+    } else if (enforcement.resolution === 'denied-non-interactive') {
+      console.log(chalk.red('  ✗ Command requires approval but session is non-interactive'));
+    } else {
+      console.log(chalk.red('  ✗ Command not approved'));
+    }
+    console.log('');
+    console.log(formatDecisionMessage(decision));
+    console.log('');
+    console.log(chalk.dim(`  Session: ${session.id} (denial recorded)`));
+    console.log('');
+    process.exit(1);
+  }
+
+  // For 'log' decisions, print an informational notice
+  if (decision.action === 'log') {
+    console.log('');
+    console.log(chalk.yellow(`  ◌ Policy notice: ${decision.reason}`));
+    console.log(chalk.dim(`    Risk: ${decision.risk} | Category: ${decision.category}${decision.matchedRule ? ` | Rule: ${decision.matchedRule}` : ''}`));
+  }
+
   // --- No-sandbox mode ---
   if (!opts.sandbox) {
     console.log('');
-    console.log(chalk.yellow('  \u26A0  Running without sandbox (--no-sandbox)'));
-    console.log(chalk.yellow('  \u26A0  The agent has full access to your system.'));
-    console.log(chalk.yellow('  \u26A0  Guardrails are NOT enforced.'));
+    console.log(chalk.yellow('  ⚠  Running without sandbox (--no-sandbox)'));
+    console.log(chalk.yellow('  ⚠  The agent has full access to your system.'));
+    console.log(chalk.yellow('  ⚠  Guardrails are NOT enforced.'));
     console.log('');
 
-    const session = createSession(command, profile.name, projectPath);
-    const logger = new AuditLogger();
     logger.commandStart(command);
 
     try {
@@ -75,7 +200,11 @@ export async function runCommand(command: string, opts: RunOptions): Promise<voi
 
     // Integrity: fingerprint + manifest + optional signing (no-sandbox mode)
     const fingerprint = captureFingerprint('none', 'none', command, profile);
-    const manifest = generateManifest(session, fingerprint);
+    const policyCtx = buildPolicyContext(policy, {
+      policyPath: opts.policy,
+      engineVersion: fingerprint.ithilienVersion,
+    });
+    const manifest = generateManifest(session, fingerprint, policyCtx);
     if (hasSigningKey()) {
       const { signature, publicKey } = signRootHash(manifest.rootHash);
       manifest.signature = signature;
@@ -132,15 +261,14 @@ export async function runCommand(command: string, opts: RunOptions): Promise<voi
   const beforeSnapshot = await takeSnapshot(projectPath);
   snapSpinner.succeed(`Snapshot: ${beforeSnapshot.size} files`);
 
-  // Create session
-  const session = createSession(command, profile.name, projectPath);
-  const logger = new AuditLogger();
+  // Log command start (session was created earlier for policy tracking)
   logger.commandStart(command);
 
   console.log('');
   console.log(`  ${chalk.dim('Profile:')}  ${chalk.white(profile.name)} ${chalk.dim('(' + profile.description + ')')}`);
   console.log(`  ${chalk.dim('Timeout:')}  ${chalk.white(formatDuration(profile.resources.maxDuration))}`);
   console.log(`  ${chalk.dim('Network:')}  ${chalk.white(profile.network.mode)}`);
+  console.log(`  ${chalk.dim('Policy:')}   ${chalk.white(decision.action)} ${chalk.dim('(' + decision.source + ')')}`);
   console.log(`  ${chalk.dim('Command:')}  ${chalk.cyan(command)}`);
   console.log('');
   console.log(chalk.dim('  ' + '\u2500'.repeat(40)));
@@ -244,7 +372,11 @@ export async function runCommand(command: string, opts: RunOptions): Promise<voi
 
   // Integrity: fingerprint + manifest + optional signing
   const fingerprint = captureFingerprint(dockerImageId, dockerImageTag, command, profile);
-  const manifest = generateManifest(session, fingerprint);
+  const policyCtx = buildPolicyContext(policy, {
+    policyPath: opts.policy,
+    engineVersion: fingerprint.ithilienVersion,
+  });
+  const manifest = generateManifest(session, fingerprint, policyCtx);
   if (hasSigningKey()) {
     const { signature, publicKey } = signRootHash(manifest.rootHash);
     manifest.signature = signature;
@@ -281,4 +413,12 @@ function formatDuration(seconds: number): string {
   if (m < 60) return `${m}m ${s}s`;
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
+}
+
+function formatDenialDetail(decision: PolicyDecision, resolution?: string): string {
+  const parts = [decision.reason];
+  if (resolution) {
+    parts.push(`Resolution: ${resolution}`);
+  }
+  return parts.join('. ');
 }

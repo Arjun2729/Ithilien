@@ -1,0 +1,67 @@
+# Verify Ithilien bundles in CI
+#
+# Copy this file to .github/workflows/verify-bundle.yml in your project.
+#
+# This workflow triggers when .ithilien-bundle files are pushed or included
+# in a pull request. It verifies hash chain integrity and optional signatures,
+# then posts a summary to the GitHub Actions job summary.
+#
+# Usage:
+#   1. Run your agent locally: ithilien run "claude -p 'fix tests'"
+#   2. Export the session: ithilien export <session-id>
+#   3. Commit the .ithilien-bundle file to your repo
+#   4. This workflow verifies it on push/PR
+#
+# Exit codes:
+#   0 = verification passed
+#   1 = verification failed (chain broken, signature invalid)
+#   2 = invalid input (file not found, malformed bundle)
+
+name: Verify Ithilien Bundle
+
+on:
+  push:
+    paths:
+      - '**.ithilien-bundle'
+  pull_request:
+    paths:
+      - '**.ithilien-bundle'
+  workflow_dispatch:
+    inputs:
+      bundle_path:
+        description: 'Path to .ithilien-bundle file'
+        required: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Ithilien
+        run: npm install -g ithilien
+
+      - name: Find bundle
+        id: find
+        run: |
+          BUNDLE="${{ github.event.inputs.bundle_path || '' }}"
+          if [ -z "$BUNDLE" ]; then
+            BUNDLE=$(find . -name '*.ithilien-bundle' -type f | head -1)
+          fi
+          if [ -z "$BUNDLE" ]; then
+            echo "::error::No .ithilien-bundle file found"
+            exit 2
+          fi
+          echo "path=$BUNDLE" >> "$GITHUB_OUTPUT"
+          echo "Found bundle: $BUNDLE"
+
+      - name: Verify bundle integrity
+        run: ithilien inspect "${{ steps.find.outputs.path }}" --format json
+
+      - name: Generate job summary
+        if: always() && steps.find.outputs.path
+        run: ithilien inspect "${{ steps.find.outputs.path }}" --format summary >> "$GITHUB_STEP_SUMMARY"

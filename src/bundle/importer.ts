@@ -1,16 +1,20 @@
 import AdmZip from 'adm-zip';
-import type { Session, BundleMetadata } from '../types.js';
+import type { Session, BundleMetadata, VerificationResult } from '../types.js';
 import { verifySession } from '../integrity/verifier.js';
 import { saveSession } from '../audit/session.js';
 
 /**
- * Import a .ithilien-bundle, verify its integrity, and save to local store.
+ * Extract and verify a .ithilien-bundle without saving to the local store.
+ *
+ * Returns the session, metadata, and verification result. Throws on
+ * structural issues (missing required entries). Does NOT throw on
+ * verification failure — check `result.valid` instead.
  */
-export async function importBundle(bundlePath: string): Promise<{
+export function extractBundle(bundlePath: string): {
   session: Session;
-  verified: boolean;
-  details: string;
-}> {
+  metadata: BundleMetadata;
+  result: VerificationResult;
+} {
   const zip = new AdmZip(bundlePath);
 
   // Extract metadata
@@ -41,6 +45,20 @@ export async function importBundle(bundlePath: string): Promise<{
 
   // Verify integrity
   const result = verifySession(session);
+
+  return { session, metadata, result };
+}
+
+/**
+ * Import a .ithilien-bundle, verify its integrity, and save to local store.
+ */
+export async function importBundle(bundlePath: string): Promise<{
+  session: Session;
+  verified: boolean;
+  details: string;
+}> {
+  const { session, result } = extractBundle(bundlePath);
+
   if (!result.valid) {
     throw new Error(`Bundle integrity check failed: ${result.details}`);
   }

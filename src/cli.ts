@@ -166,18 +166,22 @@ program
   .command('run <command>')
   .description('Run an agent command in a sandboxed Docker container')
   .option('--profile <name>', 'Guardrail profile to use', 'default')
+  .option('--policy <path>', 'Path to policy file (overrides .ithilien/policy.json discovery)')
   .option('--timeout <seconds>', 'Max session duration in seconds')
   .option('--no-sandbox', 'Skip Docker sandbox (runs directly with warning)')
   .option('--verbose', 'Show detailed output')
   .option('--env <vars...>', 'Environment variables to forward (KEY=VALUE)')
+  .option('--agent <name>', 'Use an agent wrapper (e.g. claude); <command> becomes the prompt')
   .action(async (command: string, opts) => {
     const { runCommand } = await import('./commands/run.js');
     await runCommand(command, {
       profile: opts.profile,
+      policy: opts.policy,
       timeout: opts.timeout,
       sandbox: opts.sandbox,
       verbose: opts.verbose ?? false,
       env: opts.env ?? [],
+      agent: opts.agent,
     });
   });
 
@@ -237,13 +241,23 @@ program
     await profilesCommand();
   });
 
+// ===== agents =====
+program
+  .command('agents')
+  .description('List available agent wrappers')
+  .action(async () => {
+    const { agentsCommand } = await import('./commands/agents.js');
+    await agentsCommand();
+  });
+
 // ===== verify =====
 program
   .command('verify <id>')
   .description('Verify integrity of a session audit trail')
-  .action(async (id: string) => {
+  .option('--format <type>', 'Output format: terminal, json, or summary', 'terminal')
+  .action(async (id: string, opts) => {
     const { verifyCommand } = await import('./commands/verify.js');
-    await verifyCommand(id);
+    await verifyCommand(id, { format: opts.format });
   });
 
 // ===== export =====
@@ -263,6 +277,16 @@ program
   .action(async (file: string) => {
     const { importCommand } = await import('./commands/import.js');
     await importCommand(file);
+  });
+
+// ===== inspect =====
+program
+  .command('inspect <file>')
+  .description('Inspect a .ithilien-bundle file without importing')
+  .option('--format <type>', 'Output format: terminal, json, or summary', 'terminal')
+  .action(async (file: string, opts) => {
+    const { inspectCommand } = await import('./commands/inspect.js');
+    await inspectCommand(file, { format: opts.format });
   });
 
 // ===== keygen =====

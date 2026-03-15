@@ -42,6 +42,10 @@ export class AuditLogger {
     this.log({ type: 'guardrail_triggered', timestamp: now(), rule, action, detail });
   }
 
+  policyDecision(command: string, action: string, risk: string, category: string, rule: string | null, source: string, reason: string): void {
+    this.log({ type: 'policy_decision', timestamp: now(), command, action, risk, category, rule, source, reason });
+  }
+
   stdout(data: string): void {
     this.log({ type: 'stdout', timestamp: now(), data });
   }

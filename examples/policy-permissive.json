@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "description": "Permissive policy — allow most operations, only deny the most dangerous",
+  "defaultAction": "allow",
+  "defaultRisk": "low",
+  "commands": [
+    {
+      "name": "deny-pipe-to-shell",
+      "pattern": "\\b(curl|wget)\\b.*\\|\\s*(ba)?sh\\b",
+      "action": "deny",
+      "risk": "critical",
+      "category": "network",
+      "description": "Piping remote content to shell"
+    },
+    {
+      "name": "deny-disk-format",
+      "pattern": "\\bmkfs\\b",
+      "action": "deny",
+      "risk": "critical",
+      "category": "system",
+      "description": "Filesystem formatting"
+    },
+    {
+      "name": "deny-shutdown",
+      "pattern": "\\b(shutdown|reboot|halt|poweroff)\\b",
+      "action": "deny",
+      "risk": "critical",
+      "category": "system",
+      "description": "System shutdown"
+    },
+    {
+      "name": "log-force-delete",
+      "pattern": "\\brm\\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\\b",
+      "action": "log",
+      "risk": "high",
+      "category": "filesystem",
+      "description": "Recursive force delete (logged but allowed)"
+    }
+  ]
+}

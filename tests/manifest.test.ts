@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateManifest } from '../src/integrity/manifest.js';
 import { buildHashChain, computeRootHash } from '../src/integrity/hasher.js';
-import type { Session, EnvironmentFingerprint } from '../src/types.js';
+import type { Session, EnvironmentFingerprint, PolicyContext } from '../src/types.js';
 
 describe('manifest', () => {
   const fingerprint: EnvironmentFingerprint = {
@@ -68,5 +68,23 @@ describe('manifest', () => {
     expect(manifest.eventCount).toBe(0);
     expect(manifest.firstEventAt).toBe(session.startedAt);
     expect(manifest.lastEventAt).toBe(session.startedAt);
+  });
+
+  it('attaches policyContext when provided', () => {
+    const policyContext: PolicyContext = {
+      sources: ['default-policy', 'project-policy'],
+      policyHash: 'a'.repeat(64),
+      engineVersion: '0.1.0',
+    };
+    const manifest = generateManifest(session, fingerprint, policyContext);
+    expect(manifest.policyContext).toBeDefined();
+    expect(manifest.policyContext!.sources).toEqual(['default-policy', 'project-policy']);
+    expect(manifest.policyContext!.policyHash).toBe('a'.repeat(64));
+    expect(manifest.policyContext!.engineVersion).toBe('0.1.0');
+  });
+
+  it('omits policyContext when not provided', () => {
+    const manifest = generateManifest(session, fingerprint);
+    expect(manifest).not.toHaveProperty('policyContext');
   });
 });

@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "description": "CI policy — no interactive prompts, deny anything that would require approval",
+  "defaultAction": "allow",
+  "defaultRisk": "low",
+  "commands": [
+    {
+      "name": "deny-pipe-to-shell",
+      "pattern": "\\b(curl|wget)\\b.*\\|\\s*(ba)?sh\\b",
+      "action": "deny",
+      "risk": "critical",
+      "category": "network",
+      "description": "Piping remote content to shell"
+    },
+    {
+      "name": "deny-force-push",
+      "pattern": "\\bgit\\s+push\\b.*(\\s--force\\b|\\s-f\\b)",
+      "action": "deny",
+      "risk": "critical",
+      "category": "git",
+      "description": "Force push blocked in CI"
+    },
+    {
+      "name": "deny-npm-publish",
+      "pattern": "\\bnpm\\s+publish\\b",
+      "action": "deny",
+      "risk": "high",
+      "category": "package",
+      "description": "Package publishing blocked in CI"
+    },
+    {
+      "name": "deny-sudo",
+      "pattern": "\\bsudo\\b",
+      "action": "deny",
+      "risk": "high",
+      "category": "system",
+      "description": "Privilege escalation blocked in CI"
+    },
+    {
+      "name": "deny-rm-rf",
+      "pattern": "\\brm\\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\\b",
+      "action": "deny",
+      "risk": "high",
+      "category": "filesystem",
+      "description": "Recursive force delete blocked in CI"
+    },
+    {
+      "name": "log-git-push",
+      "pattern": "\\bgit\\s+push\\b",
+      "action": "log",
+      "risk": "medium",
+      "category": "git",
+      "description": "Git push (logged in CI)"
+    }
+  ]
+}

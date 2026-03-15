@@ -95,4 +95,28 @@ describe('verifier', () => {
     expect(result.valid).toBe(false);
     expect(result.details).toContain('Root hash mismatch');
   });
+
+  it('verifies a denied session with intact chain', () => {
+    const session: Session = {
+      id: 'denied-test',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      completedAt: '2026-01-01T00:00:01.000Z',
+      status: 'denied',
+      command: 'rm -rf /',
+      profile: 'default',
+      projectPath: '/tmp/project',
+      exitCode: 1,
+      events: [
+        { type: 'policy_decision', timestamp: '2026-01-01T00:00:00.000Z', command: 'rm -rf /', action: 'deny', risk: 'critical', category: 'filesystem', rule: 'recursive-force-delete', source: 'default-policy', reason: 'blocked' },
+        { type: 'command_start', timestamp: '2026-01-01T00:00:00.500Z', command: 'rm -rf /' },
+        { type: 'guardrail_triggered', timestamp: '2026-01-01T00:00:00.500Z', rule: 'recursive-force-delete', action: 'deny', detail: 'blocked' },
+        { type: 'command_end', timestamp: '2026-01-01T00:00:01.000Z', exitCode: 1 },
+      ],
+    };
+    session.manifest = generateManifest(session, fingerprint);
+
+    const result = verifySession(session);
+    expect(result.valid).toBe(true);
+    expect(result.eventCount).toBe(4);
+  });
 });
