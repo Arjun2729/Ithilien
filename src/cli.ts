@@ -8,7 +8,7 @@ const program = new Command();
 
 program
   .name('ithilien')
-  .description('Safe autonomous mode for AI coding agents — sandboxed Docker containers with audit trails')
+  .description('Verifiable AI agent runs — bounded sandboxing, tamper-evident audit trails, and reviewable apply workflows')
   .version(pkg.version);
 
 // ===== approve-server command =====
@@ -297,6 +297,20 @@ program
   .action(async (opts) => {
     const { keygenCommand } = await import('./commands/keygen.js');
     await keygenCommand({ force: opts.force ?? false });
+  });
+
+// ===== compliance-report =====
+program
+  .command('compliance-report <id>')
+  .description('Generate a compliance report mapping agent actions to reasoning and integrity proofs')
+  .option('--format <type>', 'Output format: terminal or json', 'terminal')
+  .option('-o, --output <path>', 'Write JSON output to file (implies --format json)')
+  .action(async (id: string, opts) => {
+    const { complianceReportCommand } = await import('./commands/compliance-report.js');
+    await complianceReportCommand(id, {
+      format: opts.output ? 'json' : (opts.format as 'terminal' | 'json'),
+      output: opts.output,
+    });
   });
 
 program.parse();

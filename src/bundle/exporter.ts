@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import type { Session, BundleMetadata } from '../types.js';
 import { BUNDLE_EXTENSION } from './format.js';
+import { verifySession } from '../integrity/verifier.js';
+import { generateComplianceReport } from '../audit/compliance-report.js';
 
 function getPackageVersion(): string {
   const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -77,6 +79,17 @@ export async function exportBundle(
         archive.append(event.diff, { name: patchName });
         diffIndex++;
       }
+    }
+
+    // Add compliance report (best-effort — does not affect bundle integrity)
+    try {
+      const verificationResult = session.manifest ? verifySession(session) : undefined;
+      const complianceReport = generateComplianceReport(session, verificationResult);
+      archive.append(JSON.stringify(complianceReport, null, 2), {
+        name: 'compliance-report.json',
+      });
+    } catch {
+      // Non-critical: bundle is still valid without the compliance report
     }
 
     archive.finalize();

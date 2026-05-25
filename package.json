@@ -1,7 +1,7 @@
 {
   "name": "ithilien",
-  "version": "0.1.0",
-  "description": "Safe autonomous mode for AI coding agents — sandboxed Docker containers with audit trails",
+  "version": "0.2.0",
+  "description": "Tamper-evident audit trails for AI coding agents — compliance reports, reasoning capture, hash chains, and portable bundles",
   "type": "module",
   "bin": {
     "ithilien": "dist/cli.js"
@@ -47,6 +47,6 @@
     "vitest": "^1.3.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   }
 }
