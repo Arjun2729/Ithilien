@@ -8,10 +8,6 @@ Ithilien captures every action an AI coding agent takes — file changes, comman
 [![npm version](https://img.shields.io/npm/v/ithilien.svg)](https://www.npmjs.com/package/ithilien)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-<p align="center">
-  <img src="./demo.gif" alt="Ithilien demo" width="800">
-</p>
-
 ## The problem
 
 **EU AI Act Article 12** (effective August 2026) requires high-risk AI systems to maintain immutable logs of every automated decision. **NIST AI RMF** and **OWASP LLM Top 10** both mandate tool invocations with timestamps, decision traceability, and reasoning capture.
