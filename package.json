@@ -18,6 +18,26 @@
     "test": "vitest",
     "start": "node dist/cli.js"
   },
+  "keywords": [
+    "ai-agent",
+    "audit-trail",
+    "compliance",
+    "eu-ai-act",
+    "claude-code",
+    "aider",
+    "codex",
+    "sandbox",
+    "security",
+    "nist",
+    "tamper-evident",
+    "coding-agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Arjun2729/Ithilien"
+  },
+  "homepage": "https://github.com/Arjun2729/Ithilien",
+  "license": "MIT",
   "dependencies": {
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
