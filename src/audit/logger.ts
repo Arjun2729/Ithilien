@@ -54,6 +54,10 @@ export class AuditLogger {
     this.log({ type: 'stderr', timestamp: now(), data });
   }
 
+  reasoningSidecar(content: string, intent: string): void {
+    this.log({ type: 'reasoning_sidecar', timestamp: now(), content, intent });
+  }
+
   getEvents(): SessionEvent[] {
     return [...this.events];
   }

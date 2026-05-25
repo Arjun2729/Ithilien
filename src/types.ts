@@ -7,6 +7,13 @@ export interface IthilienConfig {
     port: number;
     timeout: number; // seconds to wait for approval before auto-deny
   };
+  /**
+   * Container runtime preference.
+   * 'auto' (default) uses gVisor if installed, falls back to Docker.
+   * 'gvisor-runsc' requires gVisor installed on the host.
+   * 'docker-runc' uses standard Docker (shared host kernel — not recommended for compliance).
+   */
+  runtime?: 'gvisor-runsc' | 'docker-runc' | 'auto';
 }
 
 // ===== Guardrail Profiles =====
@@ -66,7 +73,13 @@ export type SessionEvent =
   | { type: 'guardrail_triggered'; timestamp: string; rule: string; action: string; detail: string }
   | { type: 'policy_decision'; timestamp: string; command: string; action: string; risk: string; category: string; rule: string | null; source: string; reason: string }
   | { type: 'stdout'; timestamp: string; data: string }
-  | { type: 'stderr'; timestamp: string; data: string };
+  | { type: 'stderr'; timestamp: string; data: string }
+  /**
+   * Structured reasoning event written by the agent to the Ithilien sidecar file
+   * (/tmp/ithilien-reasoning.jsonl) inside the container.
+   * Higher fidelity than heuristic stdout parsing — agents write this directly.
+   */
+  | { type: 'reasoning_sidecar'; timestamp: string; content: string; intent: string };
 
 export interface SessionSummary {
   duration: number;
@@ -205,7 +218,7 @@ export interface VerificationReport {
 /**
  * Broad category for filtering and grouping events.
  */
-export type EventCategory = 'lifecycle' | 'filesystem' | 'network' | 'package' | 'enforcement' | 'policy' | 'output';
+export type EventCategory = 'lifecycle' | 'filesystem' | 'network' | 'package' | 'enforcement' | 'policy' | 'output' | 'reasoning';
 
 /**
  * Severity level for event significance.
@@ -240,6 +253,8 @@ export function categorizeEvent(event: SessionEvent): { category: EventCategory;
       return { category: 'output', severity: 'info' };
     case 'stderr':
       return { category: 'output', severity: 'warning' };
+    case 'reasoning_sidecar':
+      return { category: 'reasoning', severity: 'info' };
   }
 }
 

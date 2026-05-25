@@ -1,21 +1,107 @@
 /**
- * Reasoning parser — extracts structured reasoning traces from agent stdout.
+ * Reasoning parser — extracts structured reasoning traces from agent stdout
+ * or from the structured sidecar file (/tmp/ithilien-reasoning.jsonl).
  *
- * Takes raw stdout events from a session and produces a ReasoningTrace:
- * structured reasoning blocks associated with the file events they motivated.
+ * Priority order (highest to lowest):
+ * 1. reasoning_sidecar events in the session (written directly by the agent,
+ *    structured, high confidence — preferred when present and non-empty)
+ * 2. Claude Code <thinking>...</thinking> blocks (extended thinking, high confidence)
+ * 3. Reasoning-prefix lines heuristic (medium confidence)
+ * 4. Generic prose heuristic (low confidence, fallback)
  *
- * Supported agents:
- * - Claude Code: <thinking>...</thinking> blocks (extended thinking), reasoning prefix lines
- * - Aider: edit rationale lines before file operations
- * - Generic: heuristic prose extraction (fallback)
- *
- * Association strategy: a reasoning block is associated with file/command events
- * that occur after it in the event timeline and before the next reasoning block.
+ * Association strategy: a reasoning block is associated with file events that
+ * occur after it in the event timeline and before the next reasoning block.
  * This mirrors how agents work: they reason, then act.
  */
 
 import type { SessionEvent } from '../types.js';
 import type { ReasoningBlock, ReasoningTrace, AgentType, ReasoningBlockType } from './schema.js';
+
+// ─── Sidecar ─────────────────────────────────────────────────────────────────
+
+/**
+ * A single structured reasoning event from the sidecar JSONL file.
+ * Schema: { "type": "reasoning", "content": string, "intent": string, "timestamp": string }
+ */
+export interface SidecarReasoningEvent {
+  type: 'reasoning';
+  content: string;
+  intent: string;
+  timestamp: string;
+}
+
+/**
+ * Parse the contents of /tmp/ithilien-reasoning.jsonl.
+ * Each line is a JSON object; malformed lines are silently skipped.
+ */
+export function parseSidecarContent(jsonl: string): SidecarReasoningEvent[] {
+  const events: SidecarReasoningEvent[] = [];
+  for (const line of jsonl.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const obj = JSON.parse(trimmed) as Record<string, unknown>;
+      if (obj['type'] === 'reasoning' && typeof obj['content'] === 'string') {
+        events.push({
+          type: 'reasoning',
+          content: obj['content'],
+          intent: typeof obj['intent'] === 'string' ? obj['intent'] : '',
+          timestamp: typeof obj['timestamp'] === 'string'
+            ? obj['timestamp']
+            : new Date().toISOString(),
+        });
+      }
+    } catch { /* skip malformed lines */ }
+  }
+  return events;
+}
+
+/**
+ * Build a ReasoningTrace from reasoning_sidecar session events.
+ * Used when sidecar data is available — higher fidelity than stdout heuristics.
+ */
+function parseFromSidecarEvents(
+  events: SessionEvent[],
+  agentHint: string | undefined,
+): ReasoningTrace {
+  const agentType = detectAgentType(agentHint);
+  const sidecarEvents = events.filter(
+    (e): e is Extract<SessionEvent, { type: 'reasoning_sidecar' }> =>
+      e.type === 'reasoning_sidecar',
+  );
+
+  const FILE_TYPES = new Set(['file_created', 'file_modified', 'file_deleted']);
+
+  // Build blocks from sidecar events in session order
+  // Associate each block with file events between this sidecar event and the next
+  const blocks: ReasoningBlock[] = sidecarEvents.map((ev, si) => {
+    // Find this sidecar event's index in the full event array
+    const evIdx = events.indexOf(ev);
+    // Next sidecar event's index (or end of session)
+    const nextSidecarIdx = si + 1 < sidecarEvents.length
+      ? events.indexOf(sidecarEvents[si + 1])
+      : events.length;
+
+    const associated: number[] = [];
+    for (let i = evIdx + 1; i < nextSidecarIdx; i++) {
+      if (FILE_TYPES.has(events[i].type)) associated.push(i);
+    }
+
+    return {
+      blockType: ev.intent ? 'rationale' : 'generic',
+      content: ev.intent ? `${ev.intent}: ${ev.content}` : ev.content,
+      confidence: 'high' as const,
+      associatedEventIndices: associated,
+    };
+  });
+
+  return {
+    agentType,
+    blocks,
+    parsedChars: 0,
+    stdoutEventCount: 0,
+  };
+}
 
 /** Lines starting with these patterns are likely reasoning */
 const REASONING_PREFIXES: RegExp[] = [
@@ -39,13 +125,22 @@ interface ChunkBoundary {
 /**
  * Parse reasoning from session events.
  *
- * @param events   Full session event list
+ * Prefers reasoning_sidecar events (written directly by the agent) over
+ * heuristic stdout parsing. Falls back to stdout when no sidecar events exist.
+ *
+ * @param events     Full session event list
  * @param agentHint  Agent name hint for parser selection (e.g. 'claude', 'aider')
  */
 export function parseReasoning(
   events: SessionEvent[],
   agentHint?: string,
 ): ReasoningTrace {
+  // Prefer sidecar events — higher fidelity than stdout heuristics
+  const hasSidecar = events.some(e => e.type === 'reasoning_sidecar');
+  if (hasSidecar) {
+    return parseFromSidecarEvents(events, agentHint);
+  }
+
   const agentType = detectAgentType(agentHint);
 
   // Collect stdout chunks in event order with their session event indices

@@ -172,6 +172,8 @@ program
   .option('--verbose', 'Show detailed output')
   .option('--env <vars...>', 'Environment variables to forward (KEY=VALUE)')
   .option('--agent <name>', 'Use an agent wrapper (e.g. claude); <command> becomes the prompt')
+  .option('--runtime <name>', 'Container runtime: auto, gvisor-runsc, or docker-runc (default: auto)')
+  .option('--reasoning-sidecar', 'Mount /tmp/ithilien-reasoning.jsonl for structured reasoning capture')
   .action(async (command: string, opts) => {
     const { runCommand } = await import('./commands/run.js');
     await runCommand(command, {
@@ -182,6 +184,8 @@ program
       verbose: opts.verbose ?? false,
       env: opts.env ?? [],
       agent: opts.agent,
+      runtime: opts.runtime,
+      reasoningSidecar: opts.reasoningSidecar ?? false,
     });
   });
 

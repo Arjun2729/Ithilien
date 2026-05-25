@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import { resolve } from 'node:path';
-import { mkdtemp, mkdir, cp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, cp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
@@ -21,6 +21,9 @@ import { enforceDecision, formatDecisionMessage } from '../policy/enforcer.js';
 import { buildPolicyContext } from '../policy/hash.js';
 import { EXIT_INVALID_INPUT } from '../exit-codes.js';
 import type { PolicyDecision } from '../policy/types.js';
+import { selectRuntime, describeRuntime, DOCKER_KERNEL_WARNING } from '../sandbox/runtime.js';
+import { injectSidecarSystemPrompt } from '../agents/claude.js';
+import { parseSidecarContent } from '../audit/reasoning-parser.js';
 
 export interface RunOptions {
   profile: string;
@@ -30,6 +33,10 @@ export interface RunOptions {
   verbose: boolean;
   env: string[];
   agent?: string;
+  /** Explicit runtime override. 'auto' defers to config then auto-detection. */
+  runtime?: string;
+  /** Mount a sidecar file at /tmp/ithilien-reasoning.jsonl for structured reasoning. */
+  reasoningSidecar: boolean;
 }
 
 export async function runCommand(command: string, opts: RunOptions): Promise<void> {
@@ -167,6 +174,32 @@ export async function runCommand(command: string, opts: RunOptions): Promise<voi
     console.log(chalk.dim(`    Risk: ${decision.risk} | Category: ${decision.category}${decision.matchedRule ? ` | Rule: ${decision.matchedRule}` : ''}`));
   }
 
+  // --- Runtime selection ---
+  // Priority: --runtime flag > config > auto-detect
+  const runtimePref = (opts.runtime ?? config.runtime ?? 'auto') as 'auto' | 'gvisor-runsc' | 'docker-runc';
+  const chosenRuntime = selectRuntime(runtimePref);
+  const runtimeInfo = describeRuntime(chosenRuntime);
+
+  // Warn if falling back to Docker in sandbox mode (no warning needed for --no-sandbox)
+  if (opts.sandbox && chosenRuntime === 'docker-runc' && runtimePref !== 'docker-runc') {
+    console.log('');
+    console.log(chalk.yellow('  \u26a0  ' + DOCKER_KERNEL_WARNING));
+  }
+
+  // --- Sidecar setup ---
+  let sidecarDir: string | null = null;
+  let sidecarPath: string | null = null;
+
+  if (opts.reasoningSidecar && opts.sandbox) {
+    sidecarDir = await mkdtemp(join(tmpdir(), 'ithilien-sidecar-'));
+    sidecarPath = join(sidecarDir, 'reasoning.jsonl');
+    // Create writable empty file for the container to append to
+    await writeFile(sidecarPath, '', { mode: 0o666 });
+
+    // Claude Code: inject system prompt to write structured reasoning to the sidecar
+    command = injectSidecarSystemPrompt(command);
+  }
+
   // --- No-sandbox mode ---
   if (!opts.sandbox) {
     console.log('');
@@ -265,7 +298,11 @@ export async function runCommand(command: string, opts: RunOptions): Promise<voi
   logger.commandStart(command);
 
   console.log('');
+  const runtimeLabel = runtimeInfo.recommended
+    ? chalk.green(runtimeInfo.name)
+    : chalk.yellow(runtimeInfo.name);
   console.log(`  ${chalk.dim('Profile:')}  ${chalk.white(profile.name)} ${chalk.dim('(' + profile.description + ')')}`);
+  console.log(`  ${chalk.dim('Runtime:')}  ${runtimeLabel} ${chalk.dim('(' + runtimeInfo.kernel + ' kernel)')}`);
   console.log(`  ${chalk.dim('Timeout:')}  ${chalk.white(formatDuration(profile.resources.maxDuration))}`);
   console.log(`  ${chalk.dim('Network:')}  ${chalk.white(profile.network.mode)}`);
   console.log(`  ${chalk.dim('Policy:')}   ${chalk.white(decision.action)} ${chalk.dim('(' + decision.source + ')')}`);
@@ -284,6 +321,8 @@ export async function runCommand(command: string, opts: RunOptions): Promise<voi
       profile,
       envVars: opts.env,
       verbose: opts.verbose,
+      runtime: chosenRuntime,
+      sidecarHostPath: sidecarPath ?? undefined,
       onStdout: (data) => {
         process.stdout.write(data);
         logger.stdout(data);
@@ -331,6 +370,27 @@ export async function runCommand(command: string, opts: RunOptions): Promise<voi
 
       diffSpinner.succeed(`${changes.length} file(s) changed`);
 
+      // Read and ingest sidecar reasoning events (if sidecar was mounted)
+      if (sidecarPath) {
+        try {
+          const sidecarContent = await readFile(sidecarPath, 'utf-8');
+          if (sidecarContent.trim()) {
+            const sidecarEvents = parseSidecarContent(sidecarContent);
+            for (const ev of sidecarEvents) {
+              logger.reasoningSidecar(ev.content, ev.intent);
+            }
+            if (opts.verbose) {
+              console.log(chalk.dim(`  Sidecar: ${sidecarEvents.length} reasoning event(s) captured`));
+            }
+          }
+        } catch { /* non-critical — session still valid without sidecar */ }
+        // Clean up sidecar temp directory
+        if (sidecarDir) {
+          await rm(sidecarDir, { recursive: true, force: true }).catch(() => {});
+          sidecarDir = null;
+        }
+      }
+
       // Store the changed files in ~/.ithilien/sessions/<id>/files for `apply`
       const { ensureSessionsDir } = await import('../audit/session.js');
       const sessionsBaseDir = await ensureSessionsDir();
@@ -362,6 +422,10 @@ export async function runCommand(command: string, opts: RunOptions): Promise<voi
     console.error(chalk.red('  Error: ' + (err as Error).message));
     if (workspaceVolume) {
       await removeVolume(workspaceVolume);
+    }
+    // Clean up sidecar on error too
+    if (sidecarDir) {
+      await rm(sidecarDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 

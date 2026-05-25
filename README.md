@@ -112,15 +112,25 @@ ithilien verify <id> --format json     # Machine-readable VerificationReport
 
 ### Reasoning extraction
 
-Ithilien parses agent stdout to extract structured reasoning traces — Claude Code's `<thinking>` blocks, Aider's edit rationale, and generic prose reasoning — then associates each reasoning block with the file events it motivated.
+Ithilien captures agent reasoning at two fidelity levels:
+
+**Structured (sidecar, preferred):** Pass `--reasoning-sidecar` and Ithilien mounts `/tmp/ithilien-reasoning.jsonl` inside the container. Agents write structured events directly:
+
+```json
+{"type":"reasoning","content":"The auth token validation is missing expiry checks","intent":"fix security vulnerability","timestamp":"2026-01-01T12:00:00Z"}
+```
+
+When `--agent claude` is used alongside `--reasoning-sidecar`, Ithilien automatically appends a system prompt instructing Claude Code to write to the sidecar before each file operation — no manual configuration required.
+
+**Heuristic (stdout parsing, fallback):** When no sidecar data is present, Ithilien parses stdout for Claude Code `<thinking>` blocks, Aider edit rationale, and generic prose reasoning.
 
 The compliance report shows:
 
 ```
 + Modified src/auth/validator.ts
     hash: a3f8bc12d7e1...
-    why:  [thinking] The current validation logic does not handle
-          edge cases where the token is well-formed but expired...
+    why:  [rationale, high] fix security vulnerability: The auth token
+          validation is missing expiry checks
 ```
 
 If the agent emitted no parseable reasoning, the `why` field is empty and `reasoningCoveragePercent` is 0 — which is itself an auditable signal.
@@ -163,7 +173,7 @@ ithilien inspect my-session.ithilien-bundle --format summary >> "$GITHUB_STEP_SU
 
 Exit codes: `0` = valid, `1` = verification failed, `2` = invalid input. See [docs/CI.md](docs/CI.md).
 
-### Bounded Docker sandbox
+### Sandbox and container runtime
 
 Agents run in Docker containers with configurable guardrails:
 
@@ -172,6 +182,42 @@ Agents run in Docker containers with configurable guardrails:
 - **Resources** — CPU, memory, and session timeout limits
 
 Three built-in profiles: `default` (balanced), `strict` (maximum isolation), `permissive` (minimal restrictions).
+
+#### Runtime comparison
+
+| Runtime | Isolation | Kernel | Recommended |
+|---------|-----------|--------|-------------|
+| gVisor (runsc) | Syscall interception | Separate (user-space) | **Yes** |
+| Docker (runc) | Process/namespace | Shared host | Fallback only |
+
+**gVisor** intercepts every syscall in a user-space kernel (Sentry). The agent process never reaches the host kernel directly, dramatically reducing the kernel attack surface. Recommended for any compliance use case or adversarial-agent scenario.
+
+**Docker (runc)** provides process isolation and namespace separation but shares the host kernel. It stops accidents; it does not protect against an agent that exploits a kernel vulnerability.
+
+Honest limitation: gVisor is not equivalent to a microVM. For maximum isolation on sensitive workloads, Firecracker or Kata Containers are stronger. gVisor is the right default for most teams.
+
+#### Runtime selection
+
+```bash
+ithilien init               # Auto-detects gVisor; writes runtime to .ithilien/config.json
+ithilien run --runtime gvisor-runsc "..."   # Explicit per-run override
+ithilien run --runtime docker-runc "..."    # Force Docker (not recommended)
+```
+
+The `runtime` field in `.ithilien/config.json` sets the project default. `--runtime auto` (default) uses gVisor if available.
+
+#### Installing gVisor
+
+```bash
+# Linux (quickstart)
+curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null
+sudo apt-get update && sudo apt-get install -y runsc
+sudo runsc install    # registers runsc with Docker
+sudo systemctl restart docker
+```
+
+Full install docs: https://gvisor.dev/docs/user_guide/install/
 
 The sandbox is a feature, not the product. You can run Ithilien with `--no-sandbox` and still get the full audit trail and compliance report.
 
@@ -234,7 +280,8 @@ List available wrappers with `ithilien agents`.
 ## What Ithilien is not
 
 - **Not a semantic monitor.** Ithilien records events and enforces shell-level boundaries. It does not interpret what the agent is doing inside the container.
-- **Not a guarantee against adversarial agents.** Shell-level guardrails can be bypassed. The sandbox limits blast radius; it does not prevent all misuse. See [SECURITY.md](SECURITY.md).
+- **Not equivalent to a microVM, even with gVisor.** gVisor's syscall interception is strong isolation, but it is not Firecracker or Kata Containers. For maximum isolation on the most sensitive workloads, a microVM runtime is stronger. gVisor is the right default for most teams.
+- **Not a guarantee against all adversarial agents.** Shell-level guardrails can be bypassed; gVisor significantly raises the bar but is not a complete security boundary. See [SECURITY.md](SECURITY.md).
 - **Not a legal compliance solution on its own.** Ithilien provides the technical artifact; compliance programs require organizational policy, risk assessment, and human oversight on top.
 
 ## Trust model

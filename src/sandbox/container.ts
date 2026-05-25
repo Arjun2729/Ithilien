@@ -9,6 +9,7 @@ import { buildMountConfig } from './mounts.js';
 import { buildNetworkConfig, createNetworkIfNeeded, removeNetworkIfNeeded } from './network.js';
 import { buildResourceConfig } from './guardrails.js';
 import { wrapCommand } from './enforce.js';
+import { type SandboxRuntime, getDockerRuntimeName } from './runtime.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const SANDBOX_IMAGE = 'ithilien/sandbox:latest';
@@ -21,6 +22,14 @@ export interface ContainerOptions {
   verbose?: boolean;
   onStdout?: (data: string) => void;
   onStderr?: (data: string) => void;
+  /** Container runtime to use. Defaults to docker-runc. */
+  runtime?: SandboxRuntime;
+  /**
+   * Host-side path to the reasoning sidecar file.
+   * When set, it is bind-mounted into the container at /tmp/ithilien-reasoning.jsonl.
+   * The agent can write structured reasoning events to this path.
+   */
+  sidecarHostPath?: string;
 }
 
 export interface ContainerResult {
@@ -148,7 +157,10 @@ export async function runInContainer(opts: ContainerOptions): Promise<ContainerR
     verbose = false,
     onStdout,
     onStderr,
+    runtime = 'docker-runc',
+    sidecarHostPath,
   } = opts;
+  const dockerRuntime = getDockerRuntimeName(runtime);
 
   // Create an isolated volume for the workspace
   const volumeName = `ithilien-workspace-${Date.now()}`;
@@ -211,6 +223,11 @@ export async function runInContainer(opts: ContainerOptions): Promise<ContainerR
     // Grant CAP_NET_ADMIN for iptables enforcement in allowlist mode
     const capAdd = profile.network.mode === 'allowlist' ? ['NET_ADMIN'] : undefined;
 
+    // If sidecar requested, add the host-side file as a bind mount
+    const finalMounts = sidecarHostPath
+      ? [...mounts, `${resolve(sidecarHostPath)}:/tmp/ithilien-reasoning.jsonl`]
+      : mounts;
+
     step = 'create-container';
     container = await docker.createContainer({
       Image: SANDBOX_IMAGE,
@@ -218,7 +235,7 @@ export async function runInContainer(opts: ContainerOptions): Promise<ContainerR
       WorkingDir: '/workspace',
       Env: env,
       HostConfig: {
-        Binds: mounts,
+        Binds: finalMounts,
         Memory: resources.memory,
         NanoCpus: resources.nanoCpus,
         NetworkMode: networkConfig.networkMode,
@@ -226,6 +243,7 @@ export async function runInContainer(opts: ContainerOptions): Promise<ContainerR
         Dns: networkConfig.dnsServers.length > 0 ? networkConfig.dnsServers : undefined,
         ExtraHosts: networkConfig.extraHosts.length > 0 ? networkConfig.extraHosts : undefined,
         CapAdd: capAdd,
+        ...(dockerRuntime ? { Runtime: dockerRuntime } : {}),
       },
       NetworkDisabled: profile.network.mode === 'none',
       StopTimeout: 10,
