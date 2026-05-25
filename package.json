@@ -1,6 +1,6 @@
 {
   "name": "ithilien",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Tamper-evident audit trails for AI coding agents — compliance reports, reasoning capture, hash chains, and portable bundles",
   "type": "module",
   "bin": {
